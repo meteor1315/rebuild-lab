@@ -1,0 +1,23 @@
+name: rebuild-lab
+
+services:
+  web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8080:80"
+
+    volumes:
+      - type: bind
+        source: /srv/rebuild-lab/data
+        target: /usr/share/nginx/html
+        read_only: true
+        bind:
+          create_host_path: false
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

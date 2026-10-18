@@ -1,0 +1,137 @@
+---
+- name: Déployer le service web REBUILD LAB
+  hosts: rebuild
+  become: true
+
+  tasks:
+    - name: Vérifier le système ciblé
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Debian'
+          - ansible_facts['distribution_major_version'] == '13'
+          - ansible_facts['architecture'] == 'aarch64'
+        fail_msg: "Ce playbook est prévu pour le Pi Debian 13 ARM64 vérifié."
+
+    - name: Installer les certificats nécessaires au dépôt Docker
+      ansible.builtin.apt:
+        name: ca-certificates
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Créer le dossier des clés APT
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Télécharger la clé du dépôt officiel Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configurer le dépôt officiel Docker
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: https://download.docker.com/linux/debian
+          Suites: trixie
+          Components: stable
+          Architectures: arm64
+          Signed-By: /etc/apt/keyrings/docker.asc
+      register: docker_repository
+
+    - name: Installer Docker et le plugin Compose
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: "{{ docker_repository.changed }}"
+        cache_valid_time: "{{ 0 if docker_repository.changed else 3600 }}"
+
+    - name: Activer et démarrer Docker
+      ansible.builtin.service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Créer les dossiers du projet
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - /opt/rebuild-lab
+        - /srv/rebuild-lab
+        - /srv/rebuild-lab/data
+
+    - name: Créer la page initiale sans écraser les données existantes
+      ansible.builtin.copy:
+        dest: /srv/rebuild-lab/data/index.html
+        force: false
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          <!doctype html>
+          <html lang="fr">
+          <head>
+            <meta charset="utf-8">
+            <title>REBUILD LAB</title>
+          </head>
+          <body>
+            <h1>REBUILD LAB</h1>
+            <p>Service web de démonstration.</p>
+            <p>Identifiant fictif : rebuild-demo-001</p>
+          </body>
+          </html>
+
+    - name: Copier le fichier Docker Compose
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../compose/docker-compose.yml"
+        dest: /opt/rebuild-lab/docker-compose.yml
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Déployer le service avec Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: /opt/rebuild-lab
+        files:
+          - docker-compose.yml
+        state: present
+        pull: missing
+        wait: true
+        wait_timeout: 60
+
+    - name: Vérifier la réponse HTTP depuis le Pi
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/
+        status_code: 200
+        return_content: true
+      register: web_response
+      until: web_response.status | default(0) == 200
+      retries: 6
+      delay: 2
+      when: not ansible_check_mode
+
+    - name: Vérifier le contenu attendu
+      ansible.builtin.assert:
+        that:
+          - "'REBUILD LAB' in web_response.content"
+        fail_msg: "Le serveur répond mais la page attendue n'est pas présente."
+      when: not ansible_check_mode
