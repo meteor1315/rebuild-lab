@@ -1,0 +1,33 @@
+---
+- name: Monter la clé USB de sauvegarde
+  hosts: rebuild
+  become: true
+  vars:
+    backup_mount_path: /mnt/rebuild-backup
+
+  tasks:
+    - name: Conserver une copie initiale de fstab
+      ansible.builtin.copy:
+        src: /etc/fstab
+        dest: /etc/fstab.pre-rebuild
+        remote_src: true
+        force: false
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Créer le point de montage
+      ansible.builtin.file:
+        path: "{{ backup_mount_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Monter la partition de sauvegarde par UUID
+      ansible.posix.mount:
+        path: "{{ backup_mount_path }}"
+        src: "UUID={{ backup_device_uuid }}"
+        fstype: ext4
+        opts: defaults,nofail,x-systemd.device-timeout=10s
+        state: mounted

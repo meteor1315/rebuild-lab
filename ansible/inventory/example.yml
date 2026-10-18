@@ -1,0 +1,8 @@
+---
+rebuild:
+  hosts:
+    rebuild_pi:
+      ansible_host: IP_DU_PI
+      ansible_user: UTILISATEUR_DU_PI
+      ansible_python_interpreter: /usr/bin/python3
+      backup_device_uuid: UUID_DE_LA_PARTITION_DE_SAUVEGARDE

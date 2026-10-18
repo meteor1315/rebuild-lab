@@ -1,0 +1,22 @@
+.DS_Store
+
+# Configuration locale
+ansible/inventory/local.yml
+.env
+.env.*
+!.env.example
+
+# Secrets et clés privées
+secrets/
+*.key
+*.pem
+.vault-password*
+
+# Données et restaurations de travail
+data/
+backups/
+restore-test/
+
+# Environnements Python
+.venv/
+__pycache__/
